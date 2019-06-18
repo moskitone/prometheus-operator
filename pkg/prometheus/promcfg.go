@@ -207,11 +207,11 @@ func (cg *configGenerator) generateConfig(
 	var scrapeConfigs []yaml.MapSlice
 	for _, identifier := range sMonIdentifiers {
 		for i, ep := range sMons[identifier].Spec.Endpoints {
-			if !strings.Contains(sMons[identifier].Name, "kubelet") {
+			if !strings.Contains(sMons[identifier].Name, "kubelet") && !strings.Contains(sMons[identifier].Name, "node-exporter") {
 				scrapeConfigs = append(scrapeConfigs, cg.generateServiceMonitorConfig(version, sMons[identifier], ep, i, apiserverConfig, basicAuthSecrets))
 
 			} else {
-				scrapeConfigs = append(scrapeConfigs, cg.generateKubeletMonitorConfig(version, sMons[identifier], ep, i, apiserverConfig, basicAuthSecrets))
+				scrapeConfigs = append(scrapeConfigs, cg.generateNodeMonitorConfig(version, sMons[identifier], ep, i, apiserverConfig, basicAuthSecrets))
 
 			}
 
@@ -801,7 +801,7 @@ func (cg *configGenerator) generateServiceMonitorConfig(version semver.Version, 
 	return cfg
 }
 
-func (cg *configGenerator) generateKubeletMonitorConfig(version semver.Version, m *v1.ServiceMonitor, ep v1.Endpoint, i int, apiserverConfig *v1.APIServerConfig, basicAuthSecrets map[string]BasicAuthCredentials) yaml.MapSlice {
+func (cg *configGenerator) generateNodeMonitorConfig(version semver.Version, m *v1.ServiceMonitor, ep v1.Endpoint, i int, apiserverConfig *v1.APIServerConfig, basicAuthSecrets map[string]BasicAuthCredentials) yaml.MapSlice {
 	cfg := yaml.MapSlice{
 		{
 			Key:   "job_name",
@@ -874,184 +874,17 @@ func (cg *configGenerator) generateKubeletMonitorConfig(version semver.Version, 
 	}
 	sort.Strings(labelKeys)
 
-	//for _, k := range labelKeys {
-	//	relabelings = append(relabelings, yaml.MapSlice{
-	//		{Key: "action", Value: "keep"},
-	//		{Key: "source_labels", Value: []string{"__meta_kubernetes_service_label_" + sanitizeLabelName(k)}},
-	//		{Key: "regex", Value: m.Spec.Selector.MatchLabels[k]},
-	//	})
-	//}
-	//// Set based label matching. We have to map the valid relations
-	//// `In`, `NotIn`, `Exists`, and `DoesNotExist`, into relabeling rules.
-	//for _, exp := range m.Spec.Selector.MatchExpressions {
-	//	switch exp.Operator {
-	//	case metav1.LabelSelectorOpIn:
-	//		relabelings = append(relabelings, yaml.MapSlice{
-	//			{Key: "action", Value: "keep"},
-	//			{Key: "source_labels", Value: []string{"__meta_kubernetes_service_label_" + sanitizeLabelName(exp.Key)}},
-	//			{Key: "regex", Value: strings.Join(exp.Values, "|")},
-	//		})
-	//	case metav1.LabelSelectorOpNotIn:
-	//		relabelings = append(relabelings, yaml.MapSlice{
-	//			{Key: "action", Value: "drop"},
-	//			{Key: "source_labels", Value: []string{"__meta_kubernetes_service_label_" + sanitizeLabelName(exp.Key)}},
-	//			{Key: "regex", Value: strings.Join(exp.Values, "|")},
-	//		})
-	//	case metav1.LabelSelectorOpExists:
-	//		relabelings = append(relabelings, yaml.MapSlice{
-	//			{Key: "action", Value: "keep"},
-	//			{Key: "source_labels", Value: []string{"__meta_kubernetes_service_label_" + sanitizeLabelName(exp.Key)}},
-	//			{Key: "regex", Value: ".+"},
-	//		})
-	//	case metav1.LabelSelectorOpDoesNotExist:
-	//		relabelings = append(relabelings, yaml.MapSlice{
-	//			{Key: "action", Value: "drop"},
-	//			{Key: "source_labels", Value: []string{"__meta_kubernetes_service_label_" + sanitizeLabelName(exp.Key)}},
-	//			{Key: "regex", Value: ".+"},
-	//		})
-	//	}
-	//}
-	//
-	//if version.Major == 1 && version.Minor < 7 {
-	//	// Filter targets based on the namespace selection configuration.
-	//	// By default we only discover services within the namespace of the
-	//	// ServiceMonitor.
-	//	// Selections allow extending this to all namespaces or to a subset
-	//	// of them specified by label or name matching.
-	//	//
-	//	// Label selections are not supported yet as they require either supported
-	//	// in the upstream SD integration or require out-of-band implementation
-	//	// in the operator with configuration reload.
-	//	//
-	//	// There's no explicit nil for the selector, we decide for the default
-	//	// case if it's all zero values.
-	//	nsel := m.Spec.NamespaceSelector
-	//
-	//	if !nsel.Any && len(nsel.MatchNames) == 0 {
-	//		relabelings = append(relabelings, yaml.MapSlice{
-	//			{Key: "action", Value: "keep"},
-	//			{Key: "source_labels", Value: []string{"__meta_kubernetes_namespace"}},
-	//			{Key: "regex", Value: m.Namespace},
-	//		})
-	//	} else if len(nsel.MatchNames) > 0 {
-	//		relabelings = append(relabelings, yaml.MapSlice{
-	//			{Key: "action", Value: "keep"},
-	//			{Key: "source_labels", Value: []string{"__meta_kubernetes_namespace"}},
-	//			{Key: "regex", Value: strings.Join(nsel.MatchNames, "|")},
-	//		})
-	//	}
-	//}
-	//
-	//// Filter targets based on correct port for the endpoint.
-	//if ep.Port != "" {
-	//	relabelings = append(relabelings, yaml.MapSlice{
-	//		{Key: "action", Value: "keep"},
-	//		{Key: "source_labels", Value: []string{"__meta_kubernetes_endpoint_port_name"}},
-	//		{Key: "regex", Value: ep.Port},
-	//	})
-	//} else if ep.TargetPort != nil {
-	//	if ep.TargetPort.StrVal != "" {
-	//		relabelings = append(relabelings, yaml.MapSlice{
-	//			{Key: "action", Value: "keep"},
-	//			{Key: "source_labels", Value: []string{"__meta_kubernetes_pod_container_port_name"}},
-	//			{Key: "regex", Value: ep.TargetPort.String()},
-	//		})
-	//	} else if ep.TargetPort.IntVal != 0 {
-	//		relabelings = append(relabelings, yaml.MapSlice{
-	//			{Key: "action", Value: "keep"},
-	//			{Key: "source_labels", Value: []string{"__meta_kubernetes_pod_container_port_number"}},
-	//			{Key: "regex", Value: ep.TargetPort.String()},
-	//		})
-	//	}
-	//}
-	//
-	//// Relabel namespace and pod and service labels into proper labels.
-	//relabelings = append(relabelings, []yaml.MapSlice{
-	//	{ // Relabel node labels for pre v2.3 meta labels
-	//		{Key: "source_labels", Value: []string{"__meta_kubernetes_endpoint_address_target_kind", "__meta_kubernetes_endpoint_address_target_name"}},
-	//		{Key: "separator", Value: ";"},
-	//		{Key: "regex", Value: "Node;(.*)"},
-	//		{Key: "replacement", Value: "${1}"},
-	//		{Key: "target_label", Value: "node"},
-	//	},
-	//	{ // Relabel pod labels for >=v2.3 meta labels
-	//		{Key: "source_labels", Value: []string{"__meta_kubernetes_endpoint_address_target_kind", "__meta_kubernetes_endpoint_address_target_name"}},
-	//		{Key: "separator", Value: ";"},
-	//		{Key: "regex", Value: "Pod;(.*)"},
-	//		{Key: "replacement", Value: "${1}"},
-	//		{Key: "target_label", Value: "pod"},
-	//	},
-	//	{
-	//		{Key: "source_labels", Value: []string{"__meta_kubernetes_namespace"}},
-	//		{Key: "target_label", Value: "namespace"},
-	//	},
-	//	{
-	//		{Key: "source_labels", Value: []string{"__meta_kubernetes_service_name"}},
-	//		{Key: "target_label", Value: "service"},
-	//	},
-	//	{
-	//		{Key: "source_labels", Value: []string{"__meta_kubernetes_pod_name"}},
-	//		{Key: "target_label", Value: "pod"},
-	//	},
-	//}...)
-	//
-	//// Relabel targetLabels from Service onto target.
-	//for _, l := range m.Spec.TargetLabels {
-	//	relabelings = append(relabelings, yaml.MapSlice{
-	//		{Key: "source_labels", Value: []string{"__meta_kubernetes_service_label_" + sanitizeLabelName(l)}},
-	//		{Key: "target_label", Value: sanitizeLabelName(l)},
-	//		{Key: "regex", Value: "(.+)"},
-	//		{Key: "replacement", Value: "${1}"},
-	//	})
-	//}
-	//
-	//for _, l := range m.Spec.PodTargetLabels {
-	//	relabelings = append(relabelings, yaml.MapSlice{
-	//		{Key: "source_labels", Value: []string{"__meta_kubernetes_pod_label_" + sanitizeLabelName(l)}},
-	//		{Key: "target_label", Value: sanitizeLabelName(l)},
-	//		{Key: "regex", Value: "(.+)"},
-	//		{Key: "replacement", Value: "${1}"},
-	//	})
-	//}
-	//
-	//// By default, generate a safe job name from the service name.  We also keep
-	//// this around if a jobLabel is set in case the targets don't actually have a
-	//// value for it. A single service may potentially have multiple metrics
-	//// endpoints, therefore the endpoints labels is filled with the ports name or
-	//// as a fallback the port number.
-	//
-	//relabelings = append(relabelings, yaml.MapSlice{
-	//	{Key: "source_labels", Value: []string{"__meta_kubernetes_service_name"}},
-	//	{Key: "target_label", Value: "job"},
-	//	{Key: "replacement", Value: "${1}"},
-	//})
-	//if m.Spec.JobLabel != "" {
-	//	relabelings = append(relabelings, yaml.MapSlice{
-	//		{Key: "source_labels", Value: []string{"__meta_kubernetes_service_label_" + sanitizeLabelName(m.Spec.JobLabel)}},
-	//		{Key: "target_label", Value: "job"},
-	//		{Key: "regex", Value: "(.+)"},
-	//		{Key: "replacement", Value: "${1}"},
-	//	})
-	//}
-	//
-	//if ep.Port != "" {
-	//	relabelings = append(relabelings, yaml.MapSlice{
-	//		{Key: "target_label", Value: "endpoint"},
-	//		{Key: "replacement", Value: ep.Port},
-	//	})
-	//} else if ep.TargetPort != nil && ep.TargetPort.String() != "" {
-	//	relabelings = append(relabelings, yaml.MapSlice{
-	//		{Key: "target_label", Value: "endpoint"},
-	//		{Key: "replacement", Value: ep.TargetPort.String()},
-	//	})
-	//}
-	//
+	relabelings = append(relabelings, yaml.MapSlice{
+		{Key: "action", Value: "labelmap"},
+		{Key: "regex", Value: "__meta_kubernetes_node_label_(.+)"},
+	})
+
 	if ep.RelabelConfigs != nil {
 		for _, c := range ep.RelabelConfigs {
 			relabelings = append(relabelings, generateRelabelConfig(c))
 		}
 	}
-	//
+
 	cfg = append(cfg, yaml.MapItem{Key: "relabel_configs", Value: relabelings})
 
 	if m.Spec.SampleLimit > 0 {
