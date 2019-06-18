@@ -207,7 +207,7 @@ func (cg *configGenerator) generateConfig(
 	var scrapeConfigs []yaml.MapSlice
 	for _, identifier := range sMonIdentifiers {
 		for i, ep := range sMons[identifier].Spec.Endpoints {
-			if !strings.Contains(sMons[identifier].Name, "kubelet") && !strings.Contains(sMons[identifier].Name, "node-exporter") {
+			if !strings.Contains(sMons[identifier].Name, "kubelet") {
 				scrapeConfigs = append(scrapeConfigs, cg.generateServiceMonitorConfig(version, sMons[identifier], ep, i, apiserverConfig, basicAuthSecrets))
 
 			} else {
@@ -821,10 +821,10 @@ func (cg *configGenerator) generateNodeMonitorConfig(version semver.Version, m *
 			}
 			cfg = append(cfg, cg.generateK8SSDConfig(nil, nil, nil, kubernetesSDRoleKubelet))
 		} else {
-			cfg = append(cfg, cg.generateK8SSDConfig(nil, apiserverConfig, basicAuthSecrets, kubernetesSDRoleKubelet))
+			cfg = append(cfg, cg.generateK8SSDConfig(getNamespacesFromServiceMonitor(m), apiserverConfig, basicAuthSecrets, kubernetesSDRoleKubelet))
 		}
 	case 2:
-		cfg = append(cfg, cg.generateK8SSDConfig(nil, apiserverConfig, basicAuthSecrets, kubernetesSDRoleKubelet))
+		cfg = append(cfg, cg.generateK8SSDConfig(getNamespacesFromServiceMonitor(m), apiserverConfig, basicAuthSecrets, kubernetesSDRoleKubelet))
 	}
 
 	if ep.Interval != "" {
@@ -884,6 +884,21 @@ func (cg *configGenerator) generateNodeMonitorConfig(version semver.Version, m *
 			relabelings = append(relabelings, generateRelabelConfig(c))
 		}
 	}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 	cfg = append(cfg, yaml.MapItem{Key: "relabel_configs", Value: relabelings})
 
